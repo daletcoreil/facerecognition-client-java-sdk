@@ -1,0 +1,996 @@
+openapi: 3.0.2
+info:
+  contact:
+    email: cortexsupport@dalet.com
+    name: Dalet
+    url: https://www.dalet.com
+  description: |
+    # Scope
+    Dalet Mediator API allows you to submit long running media jobs managed by Dalet services.
+
+    Long running media jobs include:
+    - **Media processing** such as transcoding or automatic QC.
+    - **Automatic metadata extraction** such as automatic speech transcription or face detection.
+
+    The Dalet Mediator API is a REST API with typed schema for the payload.
+    # Architecture
+    Job processing is performed on the cloud via dynamic combination of microservices. Dalet Mediator adopts the [EBU MCMA] architecture.  The key objectives of this architecture are to support:
+    - Job management and monitoring
+    - Long running transactions
+    - Event based communication pattern
+    - Service registration and discovery
+    - Horizontal scalability in an elastic manner
+
+    The architecture is implemented using the serverless approach - relying on  independent microservices accessible through well documented REST endpoints and sharing a common object model.
+    ## Roles
+    The following services are involved in the processing of media jobs exposed through the Dalet Media Mediator API:
+    - **Mediator**: this is the main entry point to the architecture; this API endpoint supports:
+    1. Checking authentication using an API key and a token mechanism
+    2. Verifying quota restrictions before accepting a submitted job
+    3. Keeping track of usage so that job processing can be tracked and billed
+    4. Keeping track of jobs metadata as a job repository
+    - **Job Processor**: once a job request is accepted by the mediator, it is assigned to a Job Processor. The Job Processor dispatches the job to an appropriate Job Worker (depending on the job profile and other criteria such as load on the system and cost of operation).  It then keeps track of the progress of the job and its status until completion and possible failures and timeout.  It reports progress to the Mediator through notifications.
+    - **Job Worker**: The Job Worker performs the actual work on the media object, for example, AI metadata extraction (AME) or essence transcoding.  It reports progress to the Job Processor through notifications.
+    - **Service Registry**: The Service Registry keeps track of all active services in the architecture. It is queried by the Mediator and by Processors to discover candidate services to perform jobs.  It is updated whenever a new service is launched or stopped.  The Service Registry also stores the list of all job profiles supported by one of the Job Workers deployed in the architecture.
+    The Dalet Mediator API abstracts away from the complexity of this orchestration and provides a simple endpoint to submit long running jobs and monitor the progress of their execution.  It serves as a facade for the additional technical services for authentication, usage monitoring and service registry.
+
+    [EBU MCMA]: /https://tech.ebu.ch/groups/mcma 'EBU MCMA'
+    ## Job Lifecycle
+    ![Job Lifecyle Diagram](./job_lifecycle.svg 'Job Lifecycle Diagram')
+
+    ## Authentication
+    To use the Dalet Mediator API - you must obtain an APIKey from Dalet.  This key comes in the form of two parameters:
+    * client ID
+    * secret
+
+    Given these two parameters, a client program must first obtain an access token (GET /auth/access-token) and then associate this token to every subsequent calls.  When the token expires, the API will return a 401 error code.  In this case, the client must request a new token and resubmit the request.
+  termsOfService: https://www.dalet.com
+  title: Dalet Media Mediator API
+  version: 1.4.0
+servers:
+- url: https://svi6ps1cih.execute-api.us-east-1.amazonaws.com/preprod
+paths:
+  /face-recognition/face/{uid}:
+    get:
+      description: Retrieve information for given extracted face id.
+      operationId: getFace
+      parameters:
+      - description: Project service id of the client associated to the request
+        explode: false
+        in: header
+        name: ProjectServiceId
+        required: true
+        schema:
+          type: string
+        style: simple
+      - description: Face Id
+        explode: false
+        in: path
+        name: uid
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Face'
+          description: Success response
+        "400":
+          description: Bad request
+        "401":
+          description: Authorization request fail
+        "502":
+          description: Failed request.
+      security:
+      - tokenSignature: []
+      tags:
+      - faceRecognition
+      x-accepts: application/json
+  /face-recognition/face-extraction-collection/{uid}:
+    get:
+      description: Retrieve the list of FaceIds found in a collection of faces obtained
+        by one extraction job.
+      operationId: getFaceExtractionCollection
+      parameters:
+      - description: Project service id of the client associated to the request
+        explode: false
+        in: header
+        name: ProjectServiceId
+        required: true
+        schema:
+          type: string
+        style: simple
+      - description: Face Collection Extraction Id
+        explode: false
+        in: path
+        name: uid
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FaceExtractionCollection'
+          description: Success response
+        "400":
+          description: Bad request
+        "401":
+          description: Authorization request fail
+        "502":
+          description: Failed request.  Reason is most likely quota violation.
+      security:
+      - tokenSignature: []
+      tags:
+      - faceRecognition
+      x-accepts: application/json
+  /face-recognition/cluster-collection/{uid}:
+    get:
+      description: Retrieve metadata about clusters stored in a clusterCollection
+        created by a ClusterFaces jobs
+      operationId: getClusterCollection
+      parameters:
+      - description: Project service id of the client associated to the request
+        explode: false
+        in: header
+        name: ProjectServiceId
+        required: true
+        schema:
+          type: string
+        style: simple
+      - description: Cluster Collection Id
+        explode: false
+        in: path
+        name: uid
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClusterCollection'
+          description: Success response
+        "400":
+          description: Bad request
+        "401":
+          description: Authorization request fail
+        "502":
+          description: Failed request.  Reason is most likely quota violation.
+      security:
+      - tokenSignature: []
+      tags:
+      - faceRecognition
+      x-accepts: application/json
+  /auth/access-token:
+    post:
+      description: Generate new access token
+      operationId: getAccessToken
+      parameters:
+      - description: client_id of the application
+        explode: false
+        in: header
+        name: client
+        required: true
+        schema:
+          type: string
+        style: simple
+      - description: secret_key of the application
+        explode: false
+        in: header
+        name: secret
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+                $ref: '#/components/examples/GetTokenResponse/value'
+              schema:
+                $ref: '#/components/schemas/Token'
+          description: Success response
+        "401":
+          description: Invalid secret or client
+      tags:
+      - auth
+      x-accepts: application/json
+  /jobs:
+    post:
+      description: Submit a new job to the Dalet Media Mediator
+      operationId: createJob
+      requestBody:
+        content:
+          application/json:
+            example:
+              $ref: '#/components/examples/MediatorJobPost/value'
+            schema:
+              $ref: '#/components/schemas/JobMediatorInput'
+        description: Object describing the Job to be executed.
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              example:
+                $ref: '#/components/examples/MediatorJobPostResponse/value'
+              schema:
+                $ref: '#/components/schemas/MediatorJob'
+          description: Success response
+        "400":
+          description: Bad request
+        "401":
+          description: Authorization request fail
+        "502":
+          description: Failed request.  Reason is most likely quota violation.
+      security:
+      - tokenSignature: []
+      tags:
+      - jobs
+      x-contentType: application/json
+      x-accepts: application/json
+  /jobs/{jobId}:
+    get:
+      description: Get job
+      operationId: getJobById
+      parameters:
+      - description: ID of the job as returned in JobMediatorEntity
+        example: 5b166783-7ab5-39b8-fcb5-6255dd115412
+        explode: false
+        in: path
+        name: jobId
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+                $ref: '#/components/examples/MediatorJobGetResponse/value'
+              schema:
+                $ref: '#/components/schemas/MediatorJob'
+          description: Success response
+        "404":
+          description: Job with required ID does not exist
+      security:
+      - tokenSignature: []
+      tags:
+      - jobs
+      x-accepts: application/json
+  /job-types:
+    get:
+      description: Get all job types including their metadata.
+      operationId: getAllJobTypes
+      parameters:
+      - description: Project service id of the client which associated to the request
+        explode: false
+        in: header
+        name: ProjectServiceId
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: '#/components/schemas/JobType'
+                type: array
+          description: Success response
+      security:
+      - tokenSignature: []
+      tags:
+      - jobTypes
+      x-accepts: application/json
+components:
+  examples:
+    GetTokenResponse:
+      value:
+        Authorization: Bearer eyJraWQiOiIwZ2FsdS1SQktGUFpPYlRmWFI0b05YVjZaVEt4dFEwckhnWllBcTZHUk1vIiwiYWxnIjoiUlMyNTYifQ.eyJ2ZXIiOjEsImp0aSI6IkFULnNGRV9oYUh3VmNseDk5clhkcmpDcFE3YWdibTdhMEtrNFF4dFNCZThpTHciLCJpc3MiOiJodHRwczovL2Rldi03NTA3MjYub2t0YS5jb20vb2F1dGgyL01lZGlhdG9yQXV0aG9yaXphdGlvblNlcnZlciIsImF1ZCI6ImFwaTovL2RlZmF1bHQiLCJpYXQiOjE1NTI5MjU5NDYsImV4cCI6MTU1MjkyOTU0NiwiY2lkIjoiMG9hY2k4bnB0TnAzWHRocXgzNTYiLCJzY3AiOlsiTWVkaWF0b3ItVXNlci1TY29wZSJdLCJzdWIiOiIwb2FjaThucHROcDNYdGhxeDM1NiJ9.Mk55dBttIBuY07NX8FLqvtl6QqlUsrIUSrgNEHV3fHQXcjNfDDWbM2W2fqUzj0OQudH92KBOFhFlW3q-g5US190dZYsg2SXCQG1KCtTTG3-OOQokMY4ygCvUAr7Vg8feuB-6wniJn5R_8rY8keIiCg6R6dEng32iiKzoo9phyGuS5qlANFVFKs7Nc7ZGQ_LlYWIV_ExUkP3Cd6OOriy-gnaeNe87RBSuKj5e20_sFYrpwhjrppnlbm4Ib_WsPA-tvvSAlN5hQpFHCJnzHY0YMa3XvAMNE2uX6Jd_mMl-OJnsl9QYqeoZIKJH-y10ooLXuX6G55X-xcxUkRBTEI1uqg
+    MediatorJobPost:
+      value:
+        job:
+          jobProfile: ExtractFaces
+          jobInput:
+            video:
+              awsS3Bucket: dalet-corecortex
+              httpEndpoint: https://dalet-scrumcorecortex.s3.amazonaws.com/e80e5756-9604-49cb-b51f-7a0183739576.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20190312T140712Z&X-Amz-SignedHeaders=host&X-Amz-Expires=14399&X-Amz-Credential=AKIAJFJMBWYZOLHMXSAQ%2F20190312%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=9adddb04911b8192b2af2cc1a88f70ec4353575dedf0afc18f26a89fe876d2f2
+              awsS3Key: e80e5756-9604-49cb-b51f-7a0183739576.mp4
+            faceSize: 160
+            minimumFacesize: 40
+            severity: Extreme
+    MediatorJobPostResponse:
+      value:
+        id: cf380e23-008d-4368-8637-90dcae4a0bd0
+        dateCreated: 2019-02-27T10:06:57.298Z
+        dateModified: 2019-02-27T10:06:58.169Z
+        quantity: 123
+        status:
+          status: QUEUED
+          statusMessage: ""
+          progress: 0
+    MediatorJobGetResponse:
+      value:
+        id: cf380e23-008d-4368-8637-90dcae4a0bd0
+        dateCreated: 2019-02-27T10:06:57.298Z
+        dateModified: 2019-02-27T10:06:58.169Z
+        quantity: 123
+        status:
+          status: COMPLETED
+          statusMessage: createFoldersForClusteredFaces
+          progress: 100
+        jobOutput:
+          jobOutputType: ExtractFacesOutput
+          faceExtractionId: bf380e23-006d-4361-8637-90dcae4a0bd0
+  schemas:
+    ExtractFacesInput:
+      allOf:
+      - $ref: '#/components/schemas/JobInput'
+      - $ref: '#/components/schemas/ExtractFacesInput_allOf'
+      description: Analyze input video file to detect faces. Steps of analysis include
+        frame extraction, selection of frames, detection of faces, encoding of the
+        faces using a neural network encoder backbone, normalization of the extracted
+        faces and storage of the result in a persistent FaceCollection.
+      title: ExtractFacesInput
+    ClusterFacesInput:
+      allOf:
+      - $ref: '#/components/schemas/JobInput'
+      - $ref: '#/components/schemas/ClusterFacesInput_allOf'
+      description: Analyze a FaceCollection and cluster faces by semantic similarity.
+      title: ClusterFacesInput
+    SearchFacesInput:
+      allOf:
+      - $ref: '#/components/schemas/JobInput'
+      - $ref: '#/components/schemas/SearchFacesInput_allOf'
+      description: Search an input face image within a cluster.  Returns an array
+        of clusters that are similar to the face.
+      title: SearchFacesInput
+    FaceInCollectionInput:
+      allOf:
+      - $ref: '#/components/schemas/JobInput'
+      - $ref: '#/components/schemas/FaceInCollectionInput_allOf'
+      description: Retrieve a presigned URL providing access to a face within a face
+        collection so that it can be downloaded.
+    ExtractFacesOutput:
+      allOf:
+      - $ref: '#/components/schemas/JobOutput'
+      - $ref: '#/components/schemas/ExtractFacesOutput_allOf'
+      title: ExtractFacesOutput
+    ClusterFacesOutput:
+      allOf:
+      - $ref: '#/components/schemas/JobOutput'
+      - $ref: '#/components/schemas/ClusterFacesOutput_allOf'
+      title: ClusterFacesOutput
+    SearchFacesOutput:
+      allOf:
+      - $ref: '#/components/schemas/JobOutput'
+      - $ref: '#/components/schemas/SearchFacesOutput_allOf'
+      title: SearchFacesOutput
+    SearchFacesOutputItem:
+      properties:
+        clusterId:
+          description: UID of a cluster matching the input face.
+          example: 3f9b1898-9d9f-11ea-925a-6a51797d0d28
+          type: string
+        confidence:
+          description: confidence
+          example: 0.56
+          type: number
+        clusterCollectionId:
+          description: ID referring to the clusterCollectionId in which the search
+            was executed
+          example: "12345"
+          type: string
+      required:
+      - clusterCollectionId
+      - clusterId
+      - confidence
+      title: SearchFacesOutputItem
+      type: object
+    ClusterCollection:
+      description: Collection of clusters within which searches can be executed
+      example:
+        uid: uid
+        jobId: jobId
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        createdBy: createdBy
+        modifiedAt: 2000-01-23T04:56:07.000+00:00
+        tenantId: tenantId
+        projectServiceId: projectServiceId
+        name: name
+        modifiedBy: modifiedBy
+        clusters:
+        - uid: uid
+          createdAt: 2000-01-23T04:56:07.000+00:00
+          jobId: jobId
+          identifiedAt: 2000-01-23T04:56:07.000+00:00
+          identity: identity
+          curatedBy: curatedBy
+          faceIds:
+          - faceIds
+          - faceIds
+          curatedAt: 2000-01-23T04:56:07.000+00:00
+          identifiedBy: identifiedBy
+        - uid: uid
+          createdAt: 2000-01-23T04:56:07.000+00:00
+          jobId: jobId
+          identifiedAt: 2000-01-23T04:56:07.000+00:00
+          identity: identity
+          curatedBy: curatedBy
+          faceIds:
+          - faceIds
+          - faceIds
+          curatedAt: 2000-01-23T04:56:07.000+00:00
+          identifiedBy: identifiedBy
+      properties:
+        uid:
+          type: string
+        tenantId:
+          type: string
+        projectServiceId:
+          type: string
+        jobId:
+          description: Cluster collections are initially created by a Cluster job
+            - they can be then curated manually
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        createdBy:
+          description: if created by a job - jobId else name of person who created
+            the clusterCollection
+          type: string
+        modifiedAt:
+          format: date-time
+          type: string
+        modifiedBy:
+          type: string
+        name:
+          description: descriptive name of the cluster collection
+          type: string
+        clusters:
+          description: metadata about cluster found in the ClusterCollection
+          items:
+            $ref: '#/components/schemas/Cluster'
+          type: array
+      required:
+      - clusters
+      title: ClusterCollection
+      type: object
+    Cluster:
+      example:
+        uid: uid
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        jobId: jobId
+        identifiedAt: 2000-01-23T04:56:07.000+00:00
+        identity: identity
+        curatedBy: curatedBy
+        faceIds:
+        - faceIds
+        - faceIds
+        curatedAt: 2000-01-23T04:56:07.000+00:00
+        identifiedBy: identifiedBy
+      properties:
+        uid:
+          description: Unique ID to retrieve the content of a cluster or its metadata
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        jobId:
+          description: Clustering job which created this cluster
+          type: string
+        identity:
+          description: Name of person recognized in cluster
+          type: string
+        identifiedAt:
+          description: Date when the identity was associated to the cluster.
+          format: date-time
+          type: string
+        identifiedBy:
+          description: Who set the identity - automatic/person.
+          type: string
+        curatedAt:
+          description: When verified manually
+          format: date-time
+          type: string
+        curatedBy:
+          description: Who verified manually.
+          type: string
+        faceIds:
+          description: UIDs of the faces in the collection
+          items:
+            type: string
+          type: array
+      required:
+      - uid
+      title: Cluster
+      type: object
+    FaceExtractionCollection:
+      description: Retrieve the list of FaceIds found in a collection.
+      example:
+        uid: uid
+        jobId: jobId
+        createdAt: 2000-01-23T04:56:07.000+00:00
+        tenantId: tenantId
+        projectServiceId: projectServiceId
+        faceIds:
+        - faceIds
+        - faceIds
+        assetName: assetName
+      properties:
+        uid:
+          type: string
+        tenantId:
+          type: string
+        projectServiceId:
+          type: string
+        jobId:
+          description: The FaceExtractionCollection was created by this Cortex job
+          type: string
+        createdAt:
+          format: date-time
+          type: string
+        assetName:
+          description: Source video file from which the faces were extracted
+          type: string
+        faceIds:
+          description: UIDs of the faces in the collection
+          items:
+            type: string
+          type: array
+    Face:
+      example:
+        uid: uid
+        bbox:
+          top: 1
+          left: 6
+          width: 5
+          height: 5
+        imageUrl: imageUrl
+        sourceExtraction: sourceExtraction
+        frameInSource: 0
+        detectedEntity:
+          identity: identity
+          detectedBy: detectedBy
+          confidence: 2.3021358869347655
+          detectedAt: 2000-01-23T04:56:07.000+00:00
+      properties:
+        uid:
+          type: string
+        sourceExtraction:
+          description: UID of FaceExtractionCollection in which this face was detected
+          type: string
+        frameInSource:
+          description: Frame number in source video file
+          type: integer
+        bbox:
+          $ref: '#/components/schemas/Face_bbox'
+        imageUrl:
+          description: Presigned URL to retrive the face image.
+          type: string
+        detectedEntity:
+          $ref: '#/components/schemas/Face_detectedEntity'
+      title: Face
+      type: object
+    FaceInCollectionOutput:
+      allOf:
+      - $ref: '#/components/schemas/JobOutput'
+      - $ref: '#/components/schemas/FaceInCollectionOutput_allOf'
+      title: FaceInCollectionOutput
+    Locator:
+      description: Description of a file location according to the EBU FIMS specification
+        in S3 storage.  Either httpEndpoint or (awsS3Bucker/awsS3Key) must be provided.
+      properties:
+        awsS3Bucket:
+          description: Name of an AWS S3 bucket
+          example: dalet-AI-bucket
+          type: string
+        awsS3Key:
+          description: Name of a file in the AWS S3 bucket. For example, name of media
+            file to be indexed in an Input Locator or name of a JSON file in an Output
+            Locator.
+          example: 0000132.mp4
+          type: string
+        httpEndpoint:
+          description: Public URL to access the file in the bucket. Must be computed
+            using the AWS SDK method `GeneratePresignedUrl`
+          type: string
+      title: Locator
+      type: object
+    JobMediatorInput:
+      description: Toplevel description of any job submitted to the Dalet Media Mediator
+        service.  Encapsulates a service specific job description with authentication,
+        billing and tracking metadata.
+      example:
+        quantity: 50
+        notificationEndpoint: notificationEndpoint
+        projectServiceId: cjor5rew6n6y2075817kkq4vu
+        job:
+          maxRegionLatency: 100
+          jobProfile: MediaCortexSpeechToText
+          regionName: eu-west-1
+          jobType: AIJob
+          jobInput:
+            jobInputType: jobInputType
+        tracking: '{}'
+      properties:
+        projectServiceId:
+          description: Customer Project ID.  This ID must be provided by Dalet when
+            a Cortex service is provisioned.  It must match the authorization token
+            you have been provided.
+          example: cjor5rew6n6y2075817kkq4vu
+          type: string
+        quantity:
+          description: Number of units that will be charged for this job.  The unit
+            depends on the job profile.  For example, for an AI metadata extraction
+            job, units are seconds of media duration.
+          example: 50
+          type: integer
+        tracking:
+          description: Client metadata associated to the job.  This can include any
+            identification fields provided by the client. It should identify the job
+            in a unique manner and is useful to reconcile usage reports with client
+            metadata.
+          type: object
+        notificationEndpoint:
+          description: Callback URL endpoint to be called once the stage of the job
+            is changed.
+          type: string
+        job:
+          $ref: '#/components/schemas/Job'
+      required:
+      - job
+      - projectServiceId
+      - quantity
+      title: JobMediatorInput
+      type: object
+    Job:
+      example:
+        maxRegionLatency: 100
+        jobProfile: MediaCortexSpeechToText
+        regionName: eu-west-1
+        jobType: AIJob
+        jobInput:
+          jobInputType: jobInputType
+      properties:
+        jobType:
+          enum:
+          - AIJob
+          - MediaProcessingJob
+          - FaceRecognitionJob
+          type: string
+        jobProfile:
+          description: Define what type of job is to be executed on the media object.
+          enum:
+          - MediaCortexVideoAnalysis
+          - MediaCortexSpeechToText
+          - ExtractFaces
+          - ClusterFaces
+          - SearchFaces
+          example: MediaCortexSpeechToText
+          type: string
+        regionName:
+          description: If defined, require job to be run on a Worker instance that
+            can serve any of the regions, else can run on any Worker instance. If
+            no service is available for the requested regions, the job fails.
+          example: eu-west-1
+          type: string
+        maxRegionLatency:
+          default: 100
+          description: If defined, require job to be run on a Worker instance that
+            can access the requested region with a latency less than this value
+          example: 100
+          type: number
+        jobInput:
+          $ref: '#/components/schemas/JobInput'
+      type: object
+    JobInput:
+      description: Can be either VideoAnalysisInput or SpeechToTextInput.
+      discriminator:
+        propertyName: jobInputType
+      example:
+        jobInputType: jobInputType
+      properties:
+        jobInputType:
+          type: string
+      required:
+      - jobInputType
+      type: object
+    MediatorJob:
+      description: After a job is submitted to the Dalet Media Mediator service, it
+        is attributed metadata that helps track its lifecycle.  In addition to the
+        input field (Job input / Job output), the JobMediatorEntity provides a unique
+        ID, date created and last modified and usage information (verified quantity
+        and usage ID to reconcile with invoice).  These additional fields are all
+        computed by the mediator and read-only.
+      example:
+        dateCreated: dateCreated
+        quantity: 0
+        dateModified: dateModified
+        id: id
+        status:
+          progress: 6
+          statusMessage: statusMessage
+          status: NEW
+        jobOutput:
+          jobOutputType: jobOutputType
+      properties:
+        id:
+          description: Job ID computed by the Dalet Media Mediator Job registry.  Uniquely
+            identifies the job after it has been accepted by the mediator.
+          type: string
+        dateCreated:
+          description: Datetime when the job was accepted by the Mediator
+          type: string
+        dateModified:
+          description: Datetime when the job was last updated by a Job Processor service
+            reporting progress on this job.
+          type: string
+        quantity:
+          description: Verified number of units after the job is completed.  Units
+            depend on the job profile (usually, they correspond to the duration of
+            the media).  Invoicing is based on this value, which may be different
+            from the one submitted by the client.
+          type: integer
+        status:
+          $ref: '#/components/schemas/JobMediatorStatus'
+        jobOutput:
+          $ref: '#/components/schemas/JobOutput'
+      required:
+      - dateCreated
+      - dateModified
+      - id
+      - quantity
+      - status
+      type: object
+    JobMediatorStatus:
+      description: Current status of the job as reported by the associated Job Processor
+        if the job is committed.  Returned by the GET /jobs/{jobId} call. <br/>jobOutput
+        is a copy of the output specification that was provided when the job was submitted.
+      example:
+        progress: 6
+        statusMessage: statusMessage
+        status: NEW
+      properties:
+        status:
+          description: Current status of the job as reported by the Job Processor
+            that is handling it, or FAILED if it was rejected (e.g., for missing quota).
+            <br/>Possible transitions - NEW -> QUEUED -> RUNNING -> COMPLETED.
+          enum:
+          - NEW
+          - FAILED
+          - QUEUED
+          - SCHEDULED
+          - RUNNING
+          - COMPLETED
+          example: NEW
+          type: string
+        statusMessage:
+          description: Last message reported by Job Processor handling this job.
+          type: string
+        progress:
+          description: Progress as reported by the Job Processor. (TBD)
+          type: integer
+      required:
+      - status
+      title: JobMediatorStatus
+      type: object
+    JobOutput:
+      description: Where the output of the job analysis will be stored. Can be either
+        VideoAnalysisOutput or SpeechToTextOutput.
+      discriminator:
+        propertyName: jobOutputType
+      example:
+        jobOutputType: jobOutputType
+      properties:
+        jobOutputType:
+          type: string
+      required:
+      - jobOutputType
+      type: object
+    Token:
+      description: Access token necessary to submit requests to the API.
+      example:
+        authorization: authorization
+        expires: 0
+      properties:
+        authorization:
+          type: string
+        expires:
+          type: integer
+      required:
+      - authorization
+      - expires
+      title: Token
+      type: object
+    JobType:
+      description: List of job profiles accossiated to job type.
+      example:
+        name: name
+        profiles:
+        - profiles
+        - profiles
+      properties:
+        name:
+          type: string
+        profiles:
+          items:
+            type: string
+          type: array
+      required:
+      - jobType
+      - profiles
+      title: JobTypeProfiles
+      type: object
+    ExtractFacesInput_allOf:
+      properties:
+        effort:
+          default: Normal
+          description: How much effort should be invested in extracting faces from
+            the video stream. More effort brings higher accuracy for higher cost.
+          enum:
+          - Low
+          - Basic
+          - Normal
+          - High
+          - Extreme
+          example: Normal
+          type: string
+        minimumFacesize:
+          default: 40
+          description: Minimum size of face in pixel.  Only extract a face if its
+            bounding box is larger than this size.
+          example: 40
+          type: number
+        faceSize:
+          default: 160
+          description: Extraction Image size in pixels.  Extracted faces are normalized
+            as squared bitmaps with  this size.  Colors are also normalized.
+          type: number
+        video:
+          $ref: '#/components/schemas/Locator'
+      required:
+      - video
+    ClusterFacesInput_allOf:
+      properties:
+        faceExtractionId:
+          description: ID of a FaceCollection produced by an ExtractFaces job
+          type: string
+        clusterCollectionId:
+          default: ""
+          description: Optional field - if provided, cluster faces of the input collectionId
+            into an existing clusterCollection, else create a new clusterCollection.
+          type: string
+        minimumClusterSize:
+          default: 2
+          description: Minimum number of images in a cluster.  Clusters with less
+            candidates than this number will be filtered out.
+          example: 2
+          type: number
+        similarityThreshold:
+          default: 0.5
+          description: Similarity threshold (from 0 to 1) over which face candidates
+            are grouped into a cluster.  Higher value produces more smaller clusters
+            with higher confidence.
+          example: 0.5
+          type: number
+      required:
+      - faceExtractionId
+    SearchFacesInput_allOf:
+      properties:
+        inputImage:
+          $ref: '#/components/schemas/Locator'
+        clusterCollectionId:
+          description: ID of a ClusterCollection produced by an ClusterFaces job
+          type: string
+        similarityThreshold:
+          default: 0.8
+          description: Similarity threshold (from 0 to 1) over which face candidates
+            are considered a result.
+          example: 0.8
+          type: number
+      required:
+      - inputImage
+    FaceInCollectionInput_allOf:
+      properties:
+        collectionId:
+          type: string
+        faceIndex:
+          description: FaceID of the face to retrieve from the collection.
+          type: string
+      required:
+      - collectionId
+      - faceIndex
+    ExtractFacesOutput_allOf:
+      properties:
+        faceExtractionId:
+          description: UID referring to the FaceExtraction generated by the job.
+          example: "12345"
+          type: string
+        nFaces:
+          description: Number of faces extracted from the video and stored in the
+            collection.
+          type: number
+    ClusterFacesOutput_allOf:
+      properties:
+        clusterCollectionId:
+          description: UID referring to the clusterCollectionId generated or updated
+            by the job.
+          example: "12345"
+          type: string
+        nClusters:
+          description: Number of clusters in the created or updated clusterCollection.
+          type: number
+    SearchFacesOutput_allOf:
+      properties:
+        searchResult:
+          items:
+            $ref: '#/components/schemas/SearchFacesOutputItem'
+          type: array
+    Face_bbox:
+      description: Bounding box in pixels around identified face
+      example:
+        top: 1
+        left: 6
+        width: 5
+        height: 5
+      properties:
+        left:
+          type: integer
+        top:
+          type: integer
+        width:
+          type: integer
+        height:
+          type: integer
+    Face_detectedEntity:
+      description: Contains information on the detected entity which is related to
+        this face.
+      example:
+        identity: identity
+        detectedBy: detectedBy
+        confidence: 2.3021358869347655
+        detectedAt: 2000-01-23T04:56:07.000+00:00
+      properties:
+        identity:
+          description: Name of detected celebrity depicted by this face by a celebrity
+            model of a person
+          type: string
+        confidence:
+          description: Confidence that the detected identity matches this face computed
+            by the Celebrity model
+          type: number
+        detectedAt:
+          format: date-time
+          type: string
+        detectedBy:
+          description: Name of the person or celebrity model which recognized the
+            identity of this face
+          type: string
+    FaceInCollectionOutput_allOf:
+      properties:
+        face:
+          type: Face
+        faceUrl:
+          description: Presigned url for file download
+          type: string
+  securitySchemes:
+    tokenSignature:
+      in: header
+      name: Authorization
+      type: apiKey
+
